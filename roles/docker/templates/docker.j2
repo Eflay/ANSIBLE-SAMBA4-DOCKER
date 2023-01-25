@@ -1,0 +1,232 @@
+version: "3.6"
+services:
+  gitlab:
+    image: "gitlab/gitlab-ce:latest"
+    restart: "always"
+    networks:
+      - frontend
+    hostname: "${GITLAB_HOSTNAME}"
+    domainname: "${GITLAB_DOMAIN_NAME}"
+    volumes:
+      - "${GITLAB_VOLUMES_DATA}:/var/opt/gitlab"
+      - "${GITLAB_VOLUMES_CONFIG}:/etc/gitlab"
+      - "${GITLAB_VOLUMES_LOGS}:/var/log/gitlab"
+      - "${GITLAB_VOLUMES_BACKUPS}:/var/opt/gitlab/backups"
+    environment:
+      VIRTUAL_HOST: "${GITLAB_VH}"
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url '${GITLAB_EXTERNAL_URL}'
+        gitlab_rails['ldap_enabled'] = true
+        gitlab_rails['prevent_ldap_sign_in'] = false
+        gitlab_rails['ldap_servers'] = YAML.load <<-'EOS'
+          main: 
+            label: 'LDAP'
+            host: '${GITLAB_HOST}'
+            port: 636
+            uid: 'sAMAccountName'
+            bind_dn: '${BIND_DN}'
+            password: '${GITLAB_PASSWORD}'
+            encryption: '${GITLAB_ENCRYPTION}'
+            verify_certificates: false
+            smartcard_auth: false
+            active_directory: true
+            allow_username_or_email_login: false
+            lowercase_usernames: false
+            block_auto_created_users: false
+            base: '${GITLAB_BASE}'
+            user_filter: ''
+        EOS
+    shm_size: "256m"
+
+  nginx-proxy:
+    restart: "always"
+    image: "jwilder/nginx-proxy"
+    networks:
+      - frontend
+      - meet.jitsi
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/tmp/docker.sock:ro"
+      - "${NGINX_PATH_CERTIFICATES}:/etc/nginx/certs"
+  db:
+    image: "mariadb:10.5"
+    restart: "always"
+    networks:
+      - backend
+    command: "--transaction-isolation=READ-COMMITTED --binlog-format=ROW"
+    volumes:
+      - "${DB_VOLUMES}:/var/lib/mysql"
+    environment:
+      - "MYSQL_ROOT_PASSWORD=${DB_PASSWORD}"
+      - "MYSQL_PASSWORD=${DB_PASSWORD}"
+      - "MYSQL_DATABASE=nextcloud"
+      - "MYSQL_USER=nextcloud"
+
+  nextcloud:
+    image: "nextcloud"
+    restart: "always"
+    networks:
+      - frontend
+      - backend
+    links:
+      - "db"
+    volumes:
+      - "${NEXTCLOUD_VOLUMES}:/var/www/html"
+    environment:
+      - "MYSQL_PASSWORD=${DB_PASSWORD}"
+      - "MYSQL_DATABASE=nextcloud"
+      - "MYSQL_USER=nextcloud"
+      - "MYSQL_HOST=db"
+      - "NEXTCLOUD_ADMIN_USER=${NEXTCLOUD_ADMIN}"
+      - "NEXTCLOUD_ADMIN_PASSWORD=${NEXTCLOUD_PASSWORD}"
+      - "VIRTUAL_HOST=${NEXTCLOUD_VH}"
+      - "NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_VH}"
+      - "NEXTCLOUD_UPDATE=1"
+    command: su -l www-data -s /bin/bash -c '
+      cd html &&
+      pwd &&
+      php occ app:enable user_ldap &&
+
+      if [ $(php occ ldap:show-config | wc -l) -lt "6" ];
+      then
+
+      php occ ldap:create-empty-config &&
+      php occ ldap:set-config s01 ldapAgentName "${BIND_DN}" &&
+      php occ ldap:set-config s01 ldapAgentPassword ${GITLAB_PASSWORD} &&
+      php occ ldap:set-config s01 ldapBase "${NEXTCLOUD_BASE}" &&
+      php occ ldap:set-config s01 ldapGroupMemberAssocAttr member &&
+      php occ ldap:set-config s01 ldapHost ${NEXTCLOUD_HOST} &&
+      php occ ldap:set-config s01 ldapLoginFilter "(&(&(|(objectclass=user))(|(|(memberof=CN=Domain Users,CN=Users,${BASE})(primaryGroupID=513))))(|(samaccountname=%uid)(|(mailPrimaryAddress=%uid)(mail=%uid))))" &&
+      php occ ldap:set-config s01 ldapPort 636 &&
+      php occ ldap:set-config s01 ldapUserDisplayName cn &&
+      php occ ldap:set-config s01 ldapUserFilter "(&(|(objectclass=user))(|(|(memberof=CN=Domain Users,CN=Users,${BASE})(primaryGroupID=513))))" &&
+      php occ ldap:set-config s01 ldapTLS 1 &&
+      php occ ldap:set-config s01 turnOffCertCheck 1 &&
+      php occ ldap:set-config s01 ldapConfigurationActive "1" &&
+      mkdir /var/www/html/tmp
+      else
+      echo "Configuration already enable";
+      fi
+
+      source /etc/apache2/envvars &&
+      export APACHE_LOG_DIR=/var/www/html/tmp &&
+      export PATH=/usr/sbin/:$PATH &&
+      apache2 -D FOREGROUND
+      '
+
+  jitsi:
+    image: jitsi/web:stable
+    restart: always
+    volumes:
+      - ${CONFIG}/web:/config:Z
+      - ${CONFIG}/web/crontabs:/var/spool/cron/crontabs:Z
+      - ${CONFIG}/transcripts:/usr/share/jitsi-meet/transcripts:Z
+    environment:
+      - VIRTUAL_HOST=${JITSI_VH}
+      - ENABLE_AUTH
+      - ENABLE_GUESTS
+      - PUBLIC_URL
+      - TZ
+
+    networks:
+      meet.jitsi:
+
+  # XMPP server
+  prosody:
+    image: jitsi/prosody:stable
+    restart: always
+    expose:
+      - '${XMPP_PORT:-5222}'
+      - '5347'
+      - '5280'    
+    volumes:
+      - ${CONFIG}/prosody/config:/config:Z
+      - ${CONFIG}/prosody/prosody-plugins-custom:/prosody-plugins-custom:Z
+    environment:
+      - AUTH_TYPE
+      - ENABLE_AUTH
+      - ENABLE_GUESTS
+      - JIBRI_RECORDER_PASSWORD
+      - JIBRI_XMPP_PASSWORD
+      - JICOFO_AUTH_PASSWORD
+      - JIGASI_XMPP_PASSWORD
+      - JVB_AUTH_PASSWORD
+      - LDAP_AUTH_METHOD
+      - LDAP_BASE
+      - LDAP_BINDDN
+      - LDAP_BINDPW
+      - LDAP_FILTER
+      - LDAP_VERSION
+      - LDAP_TLS_CIPHERS
+      - LDAP_TLS_CHECK_PEER
+      - LDAP_URL
+      - LDAP_USE_TLS
+      - PUBLIC_URL
+      - TZ
+    networks:
+      frontend:
+      meet.jitsi:
+        aliases:
+          - ${XMPP_SERVER:-xmpp.meet.jitsi}
+
+  # Focus component
+  jicofo:
+    image: jitsi/jicofo:stable
+    restart: always
+    volumes:
+      - ${CONFIG}/jicofo:/config:Z
+    environment:
+      -  AUTH_TYPE
+      - ENABLE_AUTH
+      - JICOFO_AUTH_PASSWORD
+      - TZ
+    depends_on:
+      - prosody
+    networks:
+      frontend:
+      meet.jitsi:
+
+  # Video bridge
+  jvb:
+    image: jitsi/jvb:stable
+    restart: always
+    ports:
+      - '${JVB_PORT:-10000}:${JVB_PORT:-10000}/udp'
+      - '127.0.0.1:${JVB_COLIBRI_PORT:-8080}:8080'
+    volumes:
+      - ${CONFIG}/jvb:/config:Z
+    environment:
+      - JVB_ADVERTISE_IPS
+      - JVB_ADVERTISE_PRIVATE_CANDIDATES
+      - JVB_AUTH_PASSWORD
+      - PUBLIC_URL
+      - SENTRY_DSN="${JVB_SENTRY_DSN:-0}"
+      - TZ
+    depends_on:
+      - prosody
+    networks:
+      frontend:
+      meet.jitsi:
+
+  java:
+    image: javaweb
+    restart: always
+    ports:
+     - "8081:8080"
+    networks:
+      - frontend
+    environment:
+      - HOST
+      - PASSWORD
+      - BIND_DN
+      - 'VIRTUAL_HOST=${JAVA_VH}'
+      - BASE
+      - DOMAIN
+
+networks:
+  frontend:
+  backend:
+    internal: true
+  meet.jitsi:

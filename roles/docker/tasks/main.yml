@@ -1,0 +1,107 @@
+- name: Install required system packages
+  tags: docker
+  ansible.builtin.package:
+    name: apt-transport-https,ca-certificates,curl,lsb-release,gnupg
+    state: present
+    update_cache: true
+  become: true
+
+- name: Add Docker apt key.
+  tags: docker
+  ansible.builtin.get_url:
+    url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+    dest: /etc/apt/trusted.gpg.d/docker.asc
+    mode: 0644
+  become: true
+
+- name: Add repository into sources list
+  tags: docker
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_lsb.codename }} stable"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Update apt and install docker-ce
+  tags: docker
+  ansible.builtin.package:
+    name: docker-ce,docker-ce-cli,containerd.io,docker-compose-plugin,docker-compose
+    state: present
+    update_cache: true
+  become: true
+
+- name: Add user to docker group
+  tags: docker
+  ansible.builtin.user:
+    name: "{{ user_ansible }}"
+    groups: docker
+    append: true
+  become: true
+
+- name: Pull ca
+  tags: ca, docker, java
+  ansible.builtin.fetch:
+    src: /var/lib/samba/private/tls/ca.pem
+    dest: roles/docker/files/lan/certs/
+    flat: true
+  delegate_to: fedora
+  become: true
+
+- name: Copy Java web
+  tags: java
+  ansible.builtin.copy:
+    src: files/lan
+    dest: "/home/{{ user_ansible }}/"
+    owner: "{{ user_ansible }}"
+    group: "{{ user_ansible }}"
+    mode: 0744
+  become: true
+
+- name: Delete certs folder
+  tags: docker, ca, java
+  ansible.builtin.file:
+    path: roles/docker/files/lan/certs
+    state: absent
+  delegate_to: localhost
+
+- name: Copy docker compose file
+  tags: docker
+  ansible.builtin.template:
+    src: templates/docker.j2
+    dest: /home/{{ user_ansible }}/docker-compose.yml
+    owner: "{{ user_ansible }}"
+    group: "{{ user_ansible }}"
+    mode: 0755
+  become: true
+
+- name: Copy env file
+  tags: docker
+  ansible.builtin.template:
+    src: templates/env.j2
+    dest: /home/{{ user_ansible }}/.env
+    owner: "{{ user_ansible }}"
+    group: "{{ user_ansible }}"
+    mode: 0750
+  become: true
+
+- name: Call OpenSSL Role
+  tags: openssl, docker
+  ansible.builtin.include_role:
+    name: openssl
+
+- name: Build image javaweb
+  tags: docker
+  community.docker.docker_image:
+    build:
+      path: /home/{{ user_ansible }}/lan/
+    name: javaweb
+    source: build
+  become: true
+
+- name: Launch docker compose
+  tags: docker
+  ansible.builtin.command:
+    cmd: "docker compose up -d"
+    chdir: "/home/{{ user_ansible }}/"
+  changed_when: false
+  become: true

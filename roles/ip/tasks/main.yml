@@ -1,0 +1,33 @@
+---
+- name: Network templates for Debian
+  tags: ip
+  when: (ansible_facts['distribution'] != "Fedora")
+  ansible.builtin.template:
+    src: templates/network.j2
+    dest: /etc/network/interfaces
+    owner: root
+    group: root
+    mode: 0644
+  become: true
+
+- name: Start networking
+  tags: ip
+  when: (ansible_facts['distribution'] != "Fedora")
+  ansible.builtin.systemd:
+    name: networking
+    state: started
+    enabled: true
+  become: true
+
+- name: Configuration IP
+  tags: ip
+  when: (ansible_facts['distribution'] == "Fedora")
+  community.general.nmcli:
+    conn_name: "{{ ansible_default_ipv4.interface }}"
+    type: ethernet
+    ip4: "{{ ansible_default_ipv4.address }}/24"
+    gw4: "{{ hostvars['fedora']['ansible_default_ipv4']['gateway'] }}"
+    dns4: "{{ hostvars['fedora']['ansible_default_ipv4']['address'] }}"
+    dns4_search: "{{ secrets.realm | lower }}"
+    state: present
+  become: true

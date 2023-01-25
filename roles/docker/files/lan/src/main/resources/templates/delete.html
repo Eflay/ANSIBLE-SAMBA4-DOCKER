@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Getting Started: Serving Web Content</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Ubuntu&display=swap");
+    body {
+      text-align: center;
+      font-family: "Ubuntu", sans-serif;
+    }
+    input {
+      border: 2px solid #04aa6d;
+      border-radius: 4px;
+      width: 25%;
+      padding: 12px 20px;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    input[type="submit"] {
+      background-color: #04aa6d;
+      border: none;
+      color: white;
+      padding: 16px 32px;
+      text-decoration: none;
+      margin: 4px 2px;
+      cursor: pointer;
+    }
+  </style>
+  <body>
+    <h1>
+      Pour supprimer un compte utilisateur, veuillez renseigner le champ suivant
+      !
+    </h1>
+
+    <form action="deleteUser" method="POST">
+      <label for="username">Username:</label><br />
+      <input type="text" id="username" name="username" /><br />
+      <label for="ou-select">Choose a organizational unit:</label>
+      <select name="ou" id="ou-select">
+        <option value="">--Choisissez une option--</option>
+        <option value="Chercheurs">Chercheurs</option>
+        <option value="Technicien">Technicien</option>
+        <option value="SansOU">Sans OU</option></select
+      ><br />
+      <input type="submit" value="Supprimer l'utilisateur" />
+    </form>
+  </body>
+</html>

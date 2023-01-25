@@ -1,0 +1,14 @@
+---
+- name: Change hostname
+  tags: hostname
+  ansible.builtin.hostname:
+    name: "{{ hostname }}"
+  become: true
+
+- name: Add line in /etc/hosts
+  tags: hostname
+  when: (ansible_facts['distribution'] == "Fedora")
+  ansible.builtin.lineinfile:
+    dest: /etc/hosts
+    line: "{{ ansible_default_ipv4.address }} {{ hostname }}.{{ secrets.realm | lower }} {{ hostname }}"
+  become: true

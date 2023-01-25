@@ -1,0 +1,12 @@
+[libdefaults]
+  default_realm = {{ secrets.realm }}
+  dns_lookup_realm = false
+  dns_lookup_kdc = true
+
+[realms]
+{{ secrets.domain_name }} = {
+  default_domain = {{ secrets.domain_name }}
+}
+
+[domain_realm]
+  {{ hostname }}.{{ secrets.realm | lower }} = {{ secrets.realm }}

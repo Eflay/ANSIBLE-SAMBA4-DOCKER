@@ -1,0 +1,119 @@
+---
+- name: Check domain
+  ansible.builtin.stat:
+    path: "/var/lib/samba/sysvol/{{ secrets.realm | lower }}"
+  register: domain
+  become: true
+
+- name: Installation de l'AD
+  tags: AD
+  when: domain.stat.exists is false
+  become: true
+  block:
+    - name: Install package
+      ansible.builtin.package:
+        name: samba,samba-dc,samba-client,krb5-workstation
+        state: present
+
+    - name: Move smb.conf
+      tags: AD
+      ansible.builtin.command: mv --backup=t /etc/samba/smb.conf /etc/samba/smb.conf.old
+      changed_when: false
+
+    - name: Samba Domain provision
+      tags: AD
+      ansible.builtin.command:
+        "samba-tool domain provision --server-role=dc --use-rfc2307 --dns-backend=SAMBA_INTERNAL \
+        --realm={{ secrets.realm }} --domain={{ secrets.domain_name }} --adminpass={{ secrets.password }}"
+      changed_when: false
+
+    - name: Set dns forwarder
+      tags: AD
+      ansible.builtin.lineinfile:
+        path: "/etc/samba/smb.conf"
+        search_string: "forwarder"
+        line: "        dns forwarder = {{ dns_forwarder }}"
+
+    - name: Copy Kerberos file
+      tags: AD
+      ansible.builtin.copy:
+        src: /usr/share/samba/setup/krb5.conf
+        dest: /etc/krb5.conf.d/samba-dc
+        remote_src: true
+        mode: 0644
+
+    - name: Modify samba-dc file kerberos
+      tags: AD
+      ansible.builtin.template:
+        src: templates/kerberos.j2
+        dest: /etc/krb5.conf.d/samba-dc
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Start service samba
+      tags: AD
+      ansible.builtin.systemd:
+        name: samba
+        state: started
+        enabled: true
+
+    - name: DNS zone create
+      tags: zoneDNS, AD
+      ansible.builtin.command: "{{ item_dns }}"
+      loop:
+        - samba-tool dns zonecreate {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} {{ ansible_default_ipv4.address.split('.')[-1] }} PTR {{ hostname }}.{{ secrets.realm | lower }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ secrets.realm | lower }} {{ hostvars["debian"]['hostname'] }} A {{ hostvars["debian"]['ansible_default_ipv4']['address'] }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} {{ hostvars["debian"]['ansible_default_ipv4']['address'].split('.')[-1] }} PTR {{ hostvars["debian"]['hostname'] }}.{{ secrets.realm | lower }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ secrets.realm | lower }} gitlab.{{ secrets.realm | lower }} A {{ hostvars["debian"]['ansible_default_ipv4']['address'] }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} {{ hostvars["debian"]['ansible_default_ipv4']['address'].split('.')[-1] }} PTR gitlab.{{ secrets.realm | lower }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ secrets.realm | lower }} nextcloud.{{ secrets.realm | lower }} A {{ hostvars["debian"]['ansible_default_ipv4']['address'] }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} {{ hostvars["debian"]['ansible_default_ipv4']['address'].split('.')[-1] }} PTR nextcloud.{{ secrets.realm | lower }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ secrets.realm | lower }} jitsi.{{ secrets.realm | lower }} A {{ hostvars["debian"]['ansible_default_ipv4']['address'] }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} {{ hostvars["debian"]['ansible_default_ipv4']['address'].split('.')[-1] }} PTR jitsi.{{ secrets.realm | lower }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ secrets.realm | lower }} java.{{ secrets.realm | lower }} A {{ hostvars["debian"]['ansible_default_ipv4']['address'] }} -U Administrator --password={{ secrets.password }}
+        - samba-tool dns add {{ hostname }} {{ (ansible_default_ipv4.address.split('.'))[:3] | reverse | join('.')+'.in-addr.arpa' }} {{ hostvars["debian"]['ansible_default_ipv4']['address'].split('.')[-1] }} PTR java.{{ secrets.realm | lower }} -U Administrator --password={{ secrets.password }}
+      loop_control:
+        loop_var: item_dns
+      changed_when: false
+
+    - name: Create OU Chercheurs
+      tags: AD
+      ansible.builtin.command: "samba-tool ou create 'OU={{ item_ou }}'"
+      loop:
+        - "{{ OU }}"
+        - "{{ OU2 }}"
+      loop_control:
+        loop_var: item_ou
+      changed_when: false
+
+    - name: Create User {{ user_ad }} to OU {{ OU }}
+      tags: AD
+      ansible.builtin.command: "samba-tool user create {{ user_ad }} {{ secrets.password_user }} --userou='OU={{ OU }}'"
+      changed_when: false
+
+    - name: Create User {{ user_ad2 }} to OU {{ OU2 }}
+      tags: AD
+      ansible.builtin.command: "samba-tool user create {{ user_ad2 }} {{ secrets.password_user }} --userou='OU={{ OU2 }}'"
+      changed_when: false
+
+    - name: Add TLS_REQCERT_ALLOW
+      tags: AD
+      ansible.builtin.lineinfile:
+        path: /etc/openldap/ldap.conf
+        line: TLS_REQCERT_ALLOW
+
+    - name: Add TLS Cert in smb.conf
+      tags: AD
+      ansible.builtin.lineinfile:
+        path: /etc/samba/smb.conf
+        insertafter: "yes"
+        line: "{{ item_tls }}"
+      loop:
+        - "        tls enabled  = yes"
+        - "        tls keyfile  = tls/key.pem"
+        - "        tls certfile = tls/cert.pem"
+        - "        tls cafile   = tls/ca.pem"
+      loop_control:
+        loop_var: item_tls

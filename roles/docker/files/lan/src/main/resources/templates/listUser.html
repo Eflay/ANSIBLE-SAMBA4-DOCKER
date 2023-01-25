@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <title>Intranet</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  </head>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Ubuntu&display=swap");
+    body {
+      text-align: center;
+      font-family: "Ubuntu", sans-serif;
+    }
+
+    a:link,
+    a:visited {
+      background-color: #04aa6d;
+      color: white;
+      padding: 14px 25px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    a:hover,
+    a:active {
+      background-color: #4caf50;
+    }
+  </style>
+  <body>
+    <p th:text="'Voici la liste des utilisateurs : '+${listUsername}" />
+    <a href="/intranet">Retour à la page d'acceuil</a>
+  </body>
+</html>

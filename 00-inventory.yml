@@ -1,0 +1,12 @@
+all:
+  hosts:
+    fedora:
+      ansible_host: 127.0.0.1
+      ansible_user: "{{ user_ansible }}"
+      ansible_port: 20001
+      ansible_private_key: "{{ secrets.key_path }}"
+    debian:
+      ansible_host: 127.0.0.1
+      ansible_user: "{{ user_ansible }}"
+      ansible_port: 20002
+      ansible_private_key: "{{ secrets.key_path }}"

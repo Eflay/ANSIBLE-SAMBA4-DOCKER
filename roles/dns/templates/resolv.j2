@@ -1,0 +1,2 @@
+nameserver {{ hostvars["fedora"]['ansible_default_ipv4']['address'] }}
+search {{ secrets.realm | lower }}

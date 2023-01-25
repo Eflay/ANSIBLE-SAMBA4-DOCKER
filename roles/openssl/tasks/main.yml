@@ -1,0 +1,66 @@
+---
+- name: Install dependencies OpenSSL
+  tags: openssl
+  ansible.builtin.package:
+    name: build-essential,libssl-dev,libffi-dev,python-dev,python3-pip
+    state: present
+  become: true
+
+- name: Install cryptography
+  tags: openssl
+  ansible.builtin.pip:
+    name:
+      - cryptography
+  become: true
+
+- name: Create certificates directory
+  tags: openssl
+  ansible.builtin.file:
+    path: /home/{{ user_ansible }}/certificates
+    state: directory
+    mode: 0755
+  become: true
+
+- name: Create private key (RSA, 4096 bits)
+  tags: openssl
+  community.crypto.openssl_privatekey:
+    path: "/home/{{ user_ansible }}/certificates/{{ item_key }}.{{ secrets.realm | lower }}.key"
+  loop:
+    - nextcloud
+    - gitlab
+    - java
+    - jitsi
+  loop_control:
+    loop_var: item_key
+  become: true
+
+- name: Generate CSR certificate
+  tags: openssl
+  community.crypto.openssl_csr:
+    path: "/home/{{ user_ansible }}/certificates/{{ item_csr }}.{{ secrets.realm | lower }}.csr"
+    privatekey_path: /home/{{ user_ansible }}/certificates/{{ item_csr }}.{{ secrets.realm | lower }}.key
+    common_name: "{{ item_csr }}.{{ secrets.realm | lower }}"
+  loop:
+    - nextcloud
+    - gitlab
+    - java
+    - jitsi
+  loop_control:
+    loop_var: item_csr
+  become: true
+
+- name: Generate a Self Signed OpenSSL certificate
+  tags: openssl
+  community.crypto.x509_certificate:
+    path: "/home/{{ user_ansible }}/certificates/{{ item_cert }}.{{ secrets.realm | lower }}.crt"
+    privatekey_path: "/home/{{ user_ansible }}/certificates/{{ item_cert }}.{{ secrets.realm | lower }}.key"
+    csr_path: "/home/{{ user_ansible }}/certificates/{{ item_cert }}.{{ secrets.realm | lower }}.csr"
+    provider: selfsigned
+  loop:
+    - nextcloud
+    - gitlab
+    - java
+    - jitsi
+  loop_control:
+    loop_var: item_cert
+  become: true

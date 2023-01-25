@@ -1,0 +1,5 @@
+---
+- name: Reboot de la machine
+  tags: reboot
+  ansible.builtin.reboot:
+  become: true

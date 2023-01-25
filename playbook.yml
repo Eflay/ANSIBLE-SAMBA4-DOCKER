@@ -1,0 +1,39 @@
+---
+- name: Examen OS
+  hosts: all
+  pre_tasks:
+    - name: User configuration
+      ansible.builtin.include_role:
+        name: user
+
+  tasks:
+    - name: Fedora Configuration
+      tags: zoneDNS, dnf_package, hostname, ip, AD, firewalld, reboot
+      when: (ansible_facts['distribution'] == "Fedora")
+      ansible.builtin.include_role:
+        name: "{{ item_fedora }}"
+      loop:
+        - Update
+        - firewall
+        - hostname
+        - ip
+        - ad
+        - dns
+        - reboot
+      loop_control:
+        loop_var: item_fedora
+
+    - name: Debian Configuration
+      tags: docker, hostname, dns, apt_package, reboot, openssl, ip, java
+      when: (ansible_facts['distribution'] == "Debian")
+      ansible.builtin.include_role:
+        name: "{{ item_debian }}"
+      loop:
+        - hostname
+        - ip
+        - dns
+        - reboot
+        - Update
+        - docker
+      loop_control:
+        loop_var: item_debian

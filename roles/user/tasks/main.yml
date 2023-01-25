@@ -1,0 +1,43 @@
+---
+- name: Install sudo
+  tags: user
+  when: (ansible_facts['distribution'] == "Debian")
+  ansible.builtin.package:
+    name: sudo
+    state: present
+  become: true
+  become_method: su
+  become_user: "{{ user_become }}"
+
+- name: Création User {{ user_ansible }}
+  tags: user
+  ansible.builtin.user:
+    name: "{{ user_ansible }}"
+    groups: "{{ groups_sudo }}"
+    append: true
+  become: true
+  become_method: su
+  become_user: "{{ user_become }}"
+
+- name: Ajout de {{ user_ansible }} dans les sudoers
+  tags: user
+  when: (ansible_facts['distribution'] == "Debian")
+  ansible.builtin.template:
+    src: templates/sudoer.j2
+    dest: /etc/sudoers.d/{{ user_ansible }}
+    owner: "{{ user_become }}"
+    group: "{{ user_become }}"
+    mode: 0644
+  become: true
+  become_method: su
+  become_user: "{{ user_become }}"
+
+- name: Déploiement de la clé
+  tags: user
+  ansible.posix.authorized_key:
+    user: "{{ user_ansible }}"
+    key: "{{ secrets.key }}"
+    state: present
+  become: true
+  become_method: su
+  become_user: "{{ user_become }}"

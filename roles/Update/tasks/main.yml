@@ -1,0 +1,17 @@
+---
+- name: Mettre a jour les packages Fedora
+  tags: dnf_package
+  when: (ansible_facts['distribution'] == "Fedora")
+  ansible.builtin.package:
+    name: "*"
+    state: latest
+  become: true
+  become_user: root
+
+- name: Mettre à jours les packages debian
+  tags: apt_package
+  when: (ansible_facts['distribution'] != "Fedora")
+  ansible.builtin.package:
+    update_cache: true
+    upgrade: true
+  become: true

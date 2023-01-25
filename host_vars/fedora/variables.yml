@@ -1,0 +1,8 @@
+dns_forwarder: 1.1.1.1
+OU: Chercheurs
+OU2: Technicien
+hostname: dc1
+user_ad: Edouard
+user_ad2: Theo
+groups_sudo: wheel
+user_become: sysadmin

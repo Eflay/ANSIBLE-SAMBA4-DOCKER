@@ -1,0 +1,3 @@
+hostname: debian
+groups_sudo: sudo
+user_become: root
